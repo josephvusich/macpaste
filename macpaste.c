@@ -54,7 +54,7 @@ static void paste(CGEventRef event) {
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 1);
     CGEventRef kbdEventPasteUp = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 0);
-    CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand);
+    CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskControl);
     CGEventPost(tapA, kbdEventPasteDown);
     CGEventPost(tapA, kbdEventPasteUp);
     CFRelease(kbdEventPasteDown);
@@ -67,7 +67,7 @@ static void copy() {
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef kbdEventDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 1);
     CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 0);
-    CGEventSetFlags(kbdEventDown, kCGEventFlagMaskCommand);
+    CGEventSetFlags(kbdEventDown, kCGEventFlagMaskControl);
     CGEventPost(tapA, kbdEventDown);
     CGEventPost(tapA, kbdEventUp);
     CFRelease(kbdEventDown);
