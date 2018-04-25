@@ -28,63 +28,63 @@ CGEventTapLocation tapH = kCGHIDEventTap;
 #define DOUBLE_CLICK_MILLIS 500
 
 long long now() {
-    struct timeval te; 
+    struct timeval te;
     gettimeofday( & te, NULL );
     long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // caculate milliseconds
     return milliseconds;
 }
 
 static void paste(CGEventRef event) {
-	// Mouse click to focus and position insertion cursor.
-	CGPoint mouseLocation = CGEventGetLocation( event );
-    CGEventRef mouseClickDown = CGEventCreateMouseEvent( 
-                                NULL, kCGEventLeftMouseDown, mouseLocation, kCGMouseButtonLeft );
-    CGEventRef mouseClickUp   = CGEventCreateMouseEvent( 
-                                 NULL, kCGEventLeftMouseUp,   mouseLocation, kCGMouseButtonLeft );
-  	CGEventPost( tapH, mouseClickDown );
-  	CGEventPost( tapH, mouseClickUp );
-  	CFRelease( mouseClickDown );
-  	CFRelease( mouseClickUp );
+    // Mouse click to focus and position insertion cursor.
+    CGPoint mouseLocation = CGEventGetLocation( event );
+    CGEventRef mouseClickDown = CGEventCreateMouseEvent(
+                                    NULL, kCGEventLeftMouseDown, mouseLocation, kCGMouseButtonLeft );
+    CGEventRef mouseClickUp   = CGEventCreateMouseEvent(
+                                    NULL, kCGEventLeftMouseUp,   mouseLocation, kCGMouseButtonLeft );
+    CGEventPost( tapH, mouseClickDown );
+    CGEventPost( tapH, mouseClickUp );
+    CFRelease( mouseClickDown );
+    CFRelease( mouseClickUp );
 
-	// Allow click events time to position cursor before pasting.
-	usleep( 1000 );
+    // Allow click events time to position cursor before pasting.
+    usleep( 1000 );
 
-  // Paste.
-  CGEventSourceRef source = CGEventSourceCreate( kCGEventSourceStateCombinedSessionState );  
-  CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent( source, kVK_ANSI_V, 1 );                 
-  CGEventRef kbdEventPasteUp   = CGEventCreateKeyboardEvent( source, kVK_ANSI_V, 0 );                 
-  CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand );
-	CGEventPost( tapA, kbdEventPasteDown );
-	CGEventPost( tapA, kbdEventPasteUp );
-	CFRelease( kbdEventPasteDown );
-	CFRelease( kbdEventPasteUp );
+    // Paste.
+    CGEventSourceRef source = CGEventSourceCreate( kCGEventSourceStateCombinedSessionState );
+    CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent( source, kVK_ANSI_V, 1 );
+    CGEventRef kbdEventPasteUp   = CGEventCreateKeyboardEvent( source, kVK_ANSI_V, 0 );
+    CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand );
+    CGEventPost( tapA, kbdEventPasteDown );
+    CGEventPost( tapA, kbdEventPasteUp );
+    CFRelease( kbdEventPasteDown );
+    CFRelease( kbdEventPasteUp );
 
-	CFRelease( source );
+    CFRelease( source );
 }
 
 static void copy() {
-  CGEventSourceRef source = CGEventSourceCreate( kCGEventSourceStateCombinedSessionState );  
-  CGEventRef kbdEventDown = CGEventCreateKeyboardEvent( source, kVK_ANSI_C, 1 );                 
-  CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent( source, kVK_ANSI_C, 0 );                 
-  CGEventSetFlags( kbdEventDown, kCGEventFlagMaskCommand );
-	CGEventPost( tapA, kbdEventDown );
-	CGEventPost( tapA, kbdEventUp );
-	CFRelease( kbdEventDown );
-	CFRelease( kbdEventUp );
-	CFRelease( source );
+    CGEventSourceRef source = CGEventSourceCreate( kCGEventSourceStateCombinedSessionState );
+    CGEventRef kbdEventDown = CGEventCreateKeyboardEvent( source, kVK_ANSI_C, 1 );
+    CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent( source, kVK_ANSI_C, 0 );
+    CGEventSetFlags( kbdEventDown, kCGEventFlagMaskCommand );
+    CGEventPost( tapA, kbdEventDown );
+    CGEventPost( tapA, kbdEventUp );
+    CFRelease( kbdEventDown );
+    CFRelease( kbdEventUp );
+    CFRelease( source );
 }
 
 static void recordClickTime() {
-	prevClickTime = curClickTime;
-	curClickTime = now();
+    prevClickTime = curClickTime;
+    curClickTime = now();
 }
 
 static char isDoubleClickSpeed() {
-	return ( curClickTime - prevClickTime ) < DOUBLE_CLICK_MILLIS;
+    return ( curClickTime - prevClickTime ) < DOUBLE_CLICK_MILLIS;
 }
 
 static char isDoubleClick() {
-		return isDoubleClickSpeed();
+    return isDoubleClickSpeed();
 }
 
 static CGEventRef mouseCallback (
@@ -93,30 +93,30 @@ static CGEventRef mouseCallback (
     CGEventRef event,
     void * refcon
 ) {
-	switch ( type )
-	{
-		case kCGEventOtherMouseDown:
-			paste( event );
-			break;
+    switch ( type )
+    {
+    case kCGEventOtherMouseDown:
+        paste( event );
+        break;
 
-		case kCGEventLeftMouseDown:
-			recordClickTime();
-			break;
+    case kCGEventLeftMouseDown:
+        recordClickTime();
+        break;
 
-		case kCGEventLeftMouseUp:
-			if ( isDoubleClick() || isDragging ) {
-				copy();
-			}
-			isDragging = 0;
-			break;
+    case kCGEventLeftMouseUp:
+        if ( isDoubleClick() || isDragging ) {
+            copy();
+        }
+        isDragging = 0;
+        break;
 
-		case kCGEventLeftMouseDragged:
-			isDragging = 1;
-			break;
+    case kCGEventLeftMouseDragged:
+        isDragging = 1;
+        break;
 
-		default:
-			break;
-	}
+    default:
+        break;
+    }
 
     // Pass on the event, we must not modify it anyway, we are a listener
     return event;
@@ -130,30 +130,30 @@ int main (
     CFMachPortRef myEventTap;
     CFRunLoopSourceRef eventTapRLSrc;
 
-	printf("Quit from command-line foreground with Ctrl+C\n");
+    printf("Quit from command-line foreground with Ctrl+C\n");
 
     // We want "other" mouse button click-release, such as middle or exotic.
     emask = CGEventMaskBit( kCGEventOtherMouseDown )  |
-		    CGEventMaskBit( kCGEventLeftMouseDown ) |
-			CGEventMaskBit( kCGEventLeftMouseUp )   |
-			CGEventMaskBit( kCGEventLeftMouseDragged );
+            CGEventMaskBit( kCGEventLeftMouseDown ) |
+            CGEventMaskBit( kCGEventLeftMouseUp )   |
+            CGEventMaskBit( kCGEventLeftMouseDragged );
 
     // Create the Tap
     myEventTap = CGEventTapCreate (
-        kCGSessionEventTap,          // Catch all events for current user session
-        kCGTailAppendEventTap,       // Append to end of EventTap list
-        kCGEventTapOptionListenOnly, // We only listen, we don't modify
-        emask,
-        & mouseCallback,
-        NULL                         // We need no extra data in the callback
-    );
+                     kCGSessionEventTap,          // Catch all events for current user session
+                     kCGTailAppendEventTap,       // Append to end of EventTap list
+                     kCGEventTapOptionListenOnly, // We only listen, we don't modify
+                     emask,
+                     & mouseCallback,
+                     NULL                         // We need no extra data in the callback
+                 );
 
     // Create a RunLoop Source for it
     eventTapRLSrc = CFMachPortCreateRunLoopSource(
-        kCFAllocatorDefault,
-        myEventTap,
-        0
-    );
+                        kCFAllocatorDefault,
+                        myEventTap,
+                        0
+                    );
 
     // Add the source to the current RunLoop
     CFRunLoopAddSource(
@@ -161,7 +161,7 @@ int main (
         eventTapRLSrc,
         kCFRunLoopDefaultMode
     );
-    
+
     // Keep the RunLoop running forever
     CFRunLoopRun();
 
