@@ -18,6 +18,10 @@ If your mouse is left-handed, or you remapped the keystrokes, then just edit the
 ## Usage
 Run the executable in the background from your shell command-line interface, or run it as a "Login Item" at startup (System Preferences > Users & Groups > Login Items > + > Navigate to file).
 
+## Options
+-s "App Name" to skip the handling of that application
+-c Uses Ctrl instead of Cmd
+
 ## Building
 
 	make macpaste
