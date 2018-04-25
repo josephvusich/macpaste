@@ -20,6 +20,7 @@ Run the executable in the background from your shell command-line interface, or 
 
 ## Options
 -s "App Name" to skip the handling of that application
+
 -c Uses Ctrl instead of Cmd
 
 ## Building
