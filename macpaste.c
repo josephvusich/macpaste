@@ -14,16 +14,21 @@
 //
 // Terminate with Ctrl+C
 
+#include <stdbool.h>
+#include <sys/time.h> // gettimeofday
+#include <search.h>
+
 #include <ApplicationServices/ApplicationServices.h>
 #include <Carbon/Carbon.h> // kVK_ANSI_*
-#include <sys/time.h> // gettimeofday
 
 char isDragging = 0;
 long long prevClickTime = 0;
 long long curClickTime = 0;
+bool canSkip = false;
 
 CGEventTapLocation tapA = kCGAnnotatedSessionEventTap;
 CGEventTapLocation tapH = kCGHIDEventTap;
+int commandKey = kCGEventFlagMaskCommand;
 
 #define DOUBLE_CLICK_MILLIS 500
 
@@ -34,9 +39,13 @@ long long now() {
     return milliseconds;
 }
 
-static int isVboxWindow(CGPoint *mouse) {
+static bool isVboxWindow(CGPoint *mouse) {
+    if (!canSkip) {
+        return false;
+    }
     char buffer[400];
     int layer;
+    ENTRY e;
     CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly,
                                                        kCGNullWindowID);
     CFIndex numWindows = CFArrayGetCount(windowList);
@@ -48,7 +57,8 @@ static int isVboxWindow(CGPoint *mouse) {
             kCFNumberIntType, &layer);
         if (appName != 0) {
             CFStringGetCString(appName, buffer, 400, kCFStringEncodingUTF8);
-            if (strncmp(buffer, "VirtualBox VM", 13) != 0) {
+            e.key = buffer;
+            if (NULL == hsearch(e, FIND)) {
                 continue;
             }
             if (layer == 0) {
@@ -64,21 +74,21 @@ static int isVboxWindow(CGPoint *mouse) {
                         mouse->x < rect.origin.x + rect.size.width &&
                         mouse->y < rect.origin.y + rect.size.height) {
                         CFRelease(windowList);
-                        return 0;
+                        printf("Skipping '%s'\n", buffer);
+                        return true;
                     }
                 }
             }
         }
     }
     CFRelease(windowList);
-    return 1;
+    return false;
 }
 
 static void paste(CGEventRef event) {
     // Mouse click to focus and position insertion cursor.
     CGPoint mouseLocation = CGEventGetLocation(event);
-    if (0 == isVboxWindow(&mouseLocation)) {
-        printf("Skipping VirtualBox VM\n");
+    if (isVboxWindow(&mouseLocation)) {
         return;
     }
     CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, mouseLocation,
@@ -99,7 +109,7 @@ static void paste(CGEventRef event) {
     CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 1);
     CGEventRef kbdEventPasteUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 0);
     //CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand );
-    CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskControl);
+    CGEventSetFlags(kbdEventPasteDown, commandKey);
     CGEventPost(tapA, kbdEventPasteDown);
     CGEventPost(tapA, kbdEventPasteUp);
     CFRelease(kbdEventPasteDown);
@@ -109,8 +119,7 @@ static void paste(CGEventRef event) {
 
 static void copy(CGEventRef event) {
     CGPoint mouseLocation = CGEventGetLocation(event);
-    if (0 == isVboxWindow(&mouseLocation)) {
-        printf("Skipping VirtualBox VM\n");
+    if (isVboxWindow(&mouseLocation)) {
         return;
     }
 
@@ -118,7 +127,7 @@ static void copy(CGEventRef event) {
     CGEventRef kbdEventDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 1);
     CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 0);
     //CGEventSetFlags(kbdEventDown, kCGEventFlagMaskCommand);
-    CGEventSetFlags(kbdEventDown, kCGEventFlagMaskControl);
+    CGEventSetFlags(kbdEventDown, commandKey);
     CGEventPost(tapA, kbdEventDown);
     CGEventPost(tapA, kbdEventUp);
     CFRelease(kbdEventDown);
@@ -177,6 +186,34 @@ int main (int argc, char **argv) {
     CGEventMask emask;
     CFMachPortRef myEventTap;
     CFRunLoopSourceRef eventTapRLSrc;
+
+    if (argc > 1) {
+        if (0 == hcreate((argc - 1)/2)) {
+            printf("Can't create hash table\n");
+            return -1;
+        }
+        int opt;
+        ENTRY e;
+        while ((opt = getopt(argc, argv, "cs:")) != -1) {
+            switch (opt) {
+            case 'c':
+                commandKey = kCGEventFlagMaskControl;
+                printf("Using ctrl instead of cmd\n");
+                break;
+
+            case 's':
+                canSkip = true;
+                printf("Will skip windows named '%s'.\n", optarg);
+                e.key = optarg;
+                e.data = optarg;
+                if (NULL == hsearch(e, ENTER)) {
+                    printf("Couldn't add skip '%s'.\n", optarg);
+                    return -1;
+                }
+                break;
+            }
+        }
+    }
 
     printf("Quit from command-line foreground with Ctrl+C\n");
 
