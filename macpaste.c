@@ -29,18 +29,62 @@ CGEventTapLocation tapH = kCGHIDEventTap;
 
 long long now() {
     struct timeval te;
-    gettimeofday(&te, NULL);
+    gettimeofday( & te, NULL );
     long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // caculate milliseconds
     return milliseconds;
+}
+
+static int isVboxWindow(CGPoint *mouse) {
+    char buffer[400];
+    int layer;
+    CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly,
+                                                       kCGNullWindowID);
+    CFIndex numWindows = CFArrayGetCount(windowList);
+    for(int i = 0; i < (int)numWindows; i++) {
+        CFDictionaryRef info = (CFDictionaryRef)CFArrayGetValueAtIndex(windowList, i);
+        CFStringRef appName = (CFStringRef)CFDictionaryGetValue(info, kCGWindowOwnerName);
+        CFNumberGetValue(
+            (CFNumberRef)CFDictionaryGetValue(info, kCGWindowLayer),
+            kCFNumberIntType, &layer);
+        if (appName != 0) {
+            CFStringGetCString(appName, buffer, 400, kCFStringEncodingUTF8);
+            if (strncmp(buffer, "VirtualBox VM", 13) != 0) {
+                continue;
+            }
+            if (layer == 0) {
+                CGRect rect;
+                CFDictionaryRef bounds = (CFDictionaryRef)CFDictionaryGetValue(info,
+                                                                               kCGWindowBounds);
+                if(bounds) {
+                    CGRectMakeWithDictionaryRepresentation(bounds, &rect);
+                    //printf("x:%f, y:%f, height: %f, width:%f, %s\n", rect.origin.x, rect.origin.y,
+                    //       rect.size.height, rect.size.width, buffer);
+                    if (mouse->x >= rect.origin.x && 
+                        mouse->y >= rect.origin.y &&
+                        mouse->x < rect.origin.x + rect.size.width &&
+                        mouse->y < rect.origin.y + rect.size.height) {
+                        CFRelease(windowList);
+                        return 0;
+                    }
+                }
+            }
+        }
+    }
+    CFRelease(windowList);
+    return 1;
 }
 
 static void paste(CGEventRef event) {
     // Mouse click to focus and position insertion cursor.
     CGPoint mouseLocation = CGEventGetLocation(event);
+    if (0 == isVboxWindow(&mouseLocation)) {
+        printf("Skipping VirtualBox VM\n");
+        return;
+    }
     CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, mouseLocation,
-        kCGMouseButtonLeft);
+                                                        kCGMouseButtonLeft);
     CGEventRef mouseClickUp = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, mouseLocation,
-        kCGMouseButtonLeft);
+                                                      kCGMouseButtonLeft);
 
     CGEventPost(tapH, mouseClickDown);
     CGEventPost(tapH, mouseClickUp);
@@ -53,20 +97,27 @@ static void paste(CGEventRef event) {
     // Paste.
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 1);
-    CGEventRef kbdEventPasteUp = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 0);
+    CGEventRef kbdEventPasteUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 0);
+    //CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand );
     CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskControl);
     CGEventPost(tapA, kbdEventPasteDown);
     CGEventPost(tapA, kbdEventPasteUp);
     CFRelease(kbdEventPasteDown);
     CFRelease(kbdEventPasteUp);
-
-    CFRelease( source );
+    CFRelease(source);
 }
 
-static void copy() {
+static void copy(CGEventRef event) {
+    CGPoint mouseLocation = CGEventGetLocation(event);
+    if (0 == isVboxWindow(&mouseLocation)) {
+        printf("Skipping VirtualBox VM\n");
+        return;
+    }
+
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef kbdEventDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 1);
     CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 0);
+    //CGEventSetFlags(kbdEventDown, kCGEventFlagMaskCommand);
     CGEventSetFlags(kbdEventDown, kCGEventFlagMaskControl);
     CGEventPost(tapA, kbdEventDown);
     CGEventPost(tapA, kbdEventUp);
@@ -94,8 +145,7 @@ static CGEventRef mouseCallback (
     CGEventRef event,
     void * refcon
 ) {
-    switch (typ )
-    {
+    switch (type) {
     case kCGEventOtherMouseDown:
         paste(event);
         break;
@@ -106,7 +156,7 @@ static CGEventRef mouseCallback (
 
     case kCGEventLeftMouseUp:
         if (isDoubleClick() || isDragging) {
-            copy();
+            copy(event);
         }
         isDragging = 0;
         break;
@@ -133,16 +183,16 @@ int main (int argc, char **argv) {
     // We want "other" mouse button click-release, such as middle or exotic.
     emask = CGEventMaskBit(kCGEventOtherMouseDown)  |
             CGEventMaskBit(kCGEventLeftMouseDown) |
-            CGEventMaskBit(kCGEventLeftMouseUp) |
+            CGEventMaskBit(kCGEventLeftMouseUp)   |
             CGEventMaskBit(kCGEventLeftMouseDragged);
 
     // Create the Tap
-    myEventTap = CGEventTapCreate (
+    myEventTap = CGEventTapCreate(
                      kCGSessionEventTap,          // Catch all events for current user session
                      kCGTailAppendEventTap,       // Append to end of EventTap list
                      kCGEventTapOptionListenOnly, // We only listen, we don't modify
                      emask,
-                     &mouseCallback,
+                     & mouseCallback,
                      NULL                         // We need no extra data in the callback
                  );
 
