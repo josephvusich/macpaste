@@ -21,26 +21,26 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <Carbon/Carbon.h> // kVK_ANSI_*
 
-char isDragging = 0;
-long long prevClickTime = 0;
-long long curClickTime = 0;
-bool canSkip = false;
+char gIsDragging = 0;
+long long gPrevClickTime = 0;
+long long gCurClickTime = 0;
+bool gCanSkip = false;
 
-CGEventTapLocation tapA = kCGAnnotatedSessionEventTap;
-CGEventTapLocation tapH = kCGHIDEventTap;
-int commandKey = kCGEventFlagMaskCommand;
+CGEventTapLocation gTapA = kCGAnnotatedSessionEventTap;
+CGEventTapLocation gTapH = kCGHIDEventTap;
+int gCommandKey = kCGEventFlagMaskCommand;
 
 #define DOUBLE_CLICK_MILLIS 500
 
 long long now() {
     struct timeval te;
-    gettimeofday( & te, NULL );
+    gettimeofday(&te, NULL);
     long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // caculate milliseconds
     return milliseconds;
 }
 
 static bool isVboxWindow(CGPoint *mouse) {
-    if (!canSkip) {
+    if (!gCanSkip) {
         return false;
     }
     char buffer[400];
@@ -67,8 +67,6 @@ static bool isVboxWindow(CGPoint *mouse) {
                                                                                kCGWindowBounds);
                 if(bounds) {
                     CGRectMakeWithDictionaryRepresentation(bounds, &rect);
-                    //printf("x:%f, y:%f, height: %f, width:%f, %s\n", rect.origin.x, rect.origin.y,
-                    //       rect.size.height, rect.size.width, buffer);
                     if (mouse->x >= rect.origin.x && 
                         mouse->y >= rect.origin.y &&
                         mouse->x < rect.origin.x + rect.size.width &&
@@ -96,8 +94,8 @@ static void paste(CGEventRef event) {
     CGEventRef mouseClickUp = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, mouseLocation,
                                                       kCGMouseButtonLeft);
 
-    CGEventPost(tapH, mouseClickDown);
-    CGEventPost(tapH, mouseClickUp);
+    CGEventPost(gTapH, mouseClickDown);
+    CGEventPost(gTapH, mouseClickUp);
     CFRelease(mouseClickDown);
     CFRelease(mouseClickUp);
 
@@ -109,9 +107,9 @@ static void paste(CGEventRef event) {
     CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 1);
     CGEventRef kbdEventPasteUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 0);
     //CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand );
-    CGEventSetFlags(kbdEventPasteDown, commandKey);
-    CGEventPost(tapA, kbdEventPasteDown);
-    CGEventPost(tapA, kbdEventPasteUp);
+    CGEventSetFlags(kbdEventPasteDown, gCommandKey);
+    CGEventPost(gTapA, kbdEventPasteDown);
+    CGEventPost(gTapA, kbdEventPasteUp);
     CFRelease(kbdEventPasteDown);
     CFRelease(kbdEventPasteUp);
     CFRelease(source);
@@ -127,21 +125,21 @@ static void copy(CGEventRef event) {
     CGEventRef kbdEventDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 1);
     CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 0);
     //CGEventSetFlags(kbdEventDown, kCGEventFlagMaskCommand);
-    CGEventSetFlags(kbdEventDown, commandKey);
-    CGEventPost(tapA, kbdEventDown);
-    CGEventPost(tapA, kbdEventUp);
+    CGEventSetFlags(kbdEventDown, gCommandKey);
+    CGEventPost(gTapA, kbdEventDown);
+    CGEventPost(gTapA, kbdEventUp);
     CFRelease(kbdEventDown);
     CFRelease(kbdEventUp);
     CFRelease(source);
 }
 
 static void recordClickTime() {
-    prevClickTime = curClickTime;
-    curClickTime = now();
+    gPrevClickTime = gCurClickTime;
+    gCurClickTime = now();
 }
 
 static char isDoubleClickSpeed() {
-    return (curClickTime - prevClickTime) < DOUBLE_CLICK_MILLIS;
+    return (gCurClickTime - gPrevClickTime) < DOUBLE_CLICK_MILLIS;
 }
 
 static char isDoubleClick() {
@@ -164,14 +162,14 @@ static CGEventRef mouseCallback (
         break;
 
     case kCGEventLeftMouseUp:
-        if (isDoubleClick() || isDragging) {
+        if (isDoubleClick() || gIsDragging) {
             copy(event);
         }
-        isDragging = 0;
+        gIsDragging = 0;
         break;
 
     case kCGEventLeftMouseDragged:
-        isDragging = 1;
+        gIsDragging = 1;
         break;
 
     default:
@@ -197,12 +195,12 @@ int main (int argc, char **argv) {
         while ((opt = getopt(argc, argv, "cs:")) != -1) {
             switch (opt) {
             case 'c':
-                commandKey = kCGEventFlagMaskControl;
+                gCommandKey = kCGEventFlagMaskControl;
                 printf("Using ctrl instead of cmd\n");
                 break;
 
             case 's':
-                canSkip = true;
+                gCanSkip = true;
                 printf("Will skip windows named '%s'.\n", optarg);
                 e.key = optarg;
                 e.data = optarg;
