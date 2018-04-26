@@ -25,6 +25,7 @@ char gIsDragging = 0;
 long long gPrevClickTime = 0;
 long long gCurClickTime = 0;
 bool gCanSkip = false;
+bool gFocusOnMiddleClick = false;
 
 CGEventTapLocation gTapA = kCGAnnotatedSessionEventTap;
 CGEventTapLocation gTapH = kCGHIDEventTap;
@@ -89,15 +90,17 @@ static void paste(CGEventRef event) {
     if (isSkipWindow(&mouseLocation)) {
         return;
     }
-    CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, mouseLocation,
-                                                        kCGMouseButtonLeft);
-    CGEventRef mouseClickUp = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, mouseLocation,
-                                                      kCGMouseButtonLeft);
-
-    CGEventPost(gTapH, mouseClickDown);
-    CGEventPost(gTapH, mouseClickUp);
-    CFRelease(mouseClickDown);
-    CFRelease(mouseClickUp);
+    if (gFocusOnMiddleClick) {
+        CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown,
+                                                            mouseLocation,
+                                                            kCGMouseButtonLeft);
+        CGEventRef mouseClickUp = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, mouseLocation,
+                                                          kCGMouseButtonLeft);
+        CGEventPost(gTapH, mouseClickDown);
+        CGEventPost(gTapH, mouseClickUp);
+        CFRelease(mouseClickDown);
+        CFRelease(mouseClickUp);
+    }
 
     // Allow click events time to position cursor before pasting.
     usleep(1000);
@@ -192,20 +195,25 @@ int main (int argc, char **argv) {
         }
         int opt;
         ENTRY e;
-        while ((opt = getopt(argc, argv, "cs:")) != -1) {
+        while ((opt = getopt(argc, argv, "cfs:")) != -1) {
             switch (opt) {
             case 'c':
                 gCommandKey = kCGEventFlagMaskControl;
                 printf("Using ctrl instead of cmd\n");
                 break;
 
+            case 'f':
+                gFocusOnMiddleClick = true;
+                printf("Will focus on middle click\n");
+                break;
+
             case 's':
                 gCanSkip = true;
-                printf("Will skip windows named '%s'.\n", optarg);
+                printf("Will skip windows named '%s'\n", optarg);
                 e.key = optarg;
                 e.data = optarg;
                 if (NULL == hsearch(e, ENTER)) {
-                    printf("Couldn't add skip '%s'.\n", optarg);
+                    printf("Couldn't add skip '%s'\n", optarg);
                     return -1;
                 }
                 break;
