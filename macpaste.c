@@ -39,7 +39,7 @@ long long now() {
     return milliseconds;
 }
 
-static bool isVboxWindow(CGPoint *mouse) {
+static bool isSkipWindow(CGPoint *mouse) {
     if (!gCanSkip) {
         return false;
     }
@@ -86,7 +86,7 @@ static bool isVboxWindow(CGPoint *mouse) {
 static void paste(CGEventRef event) {
     // Mouse click to focus and position insertion cursor.
     CGPoint mouseLocation = CGEventGetLocation(event);
-    if (isVboxWindow(&mouseLocation)) {
+    if (isSkipWindow(&mouseLocation)) {
         return;
     }
     CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, mouseLocation,
@@ -117,7 +117,7 @@ static void paste(CGEventRef event) {
 
 static void copy(CGEventRef event) {
     CGPoint mouseLocation = CGEventGetLocation(event);
-    if (isVboxWindow(&mouseLocation)) {
+    if (isSkipWindow(&mouseLocation)) {
         return;
     }
 
