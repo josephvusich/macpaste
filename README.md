@@ -23,7 +23,7 @@ Run the executable in the background from your shell command-line interface, or 
 
 -c Uses Ctrl instead of Cmd
 
--f Focus window before pasting by simulating left click. This was the default behavior, but causes browsers to do weird things trying to open tabs by middle clicking.
+-n "App Name" Don't focus window before pasting by simulating left click. This was the default behavior, but causes browsers to do weird things trying to open tabs by middle clicking.
 
 ## Building
 

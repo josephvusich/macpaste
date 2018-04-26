@@ -24,12 +24,17 @@
 char gIsDragging = 0;
 long long gPrevClickTime = 0;
 long long gCurClickTime = 0;
-bool gCanSkip = false;
-bool gFocusOnMiddleClick = false;
 
 CGEventTapLocation gTapA = kCGAnnotatedSessionEventTap;
 CGEventTapLocation gTapH = kCGHIDEventTap;
 int gCommandKey = kCGEventFlagMaskCommand;
+
+bool gSkipLookups = true;
+
+struct lookup {
+    bool skipWindow;
+    bool noFocus;
+} lookup;
 
 #define DOUBLE_CLICK_MILLIS 500
 
@@ -40,13 +45,8 @@ long long now() {
     return milliseconds;
 }
 
-static bool isSkipWindow(CGPoint *mouse) {
-    if (!gCanSkip) {
-        return false;
-    }
-    char buffer[400];
+static bool getWindowUnderMouse(CGPoint *mouse, char *buf, size_t buf_len) {
     int layer;
-    ENTRY e;
     CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly,
                                                        kCGNullWindowID);
     CFIndex numWindows = CFArrayGetCount(windowList);
@@ -57,40 +57,69 @@ static bool isSkipWindow(CGPoint *mouse) {
             (CFNumberRef)CFDictionaryGetValue(info, kCGWindowLayer),
             kCFNumberIntType, &layer);
         if (appName != 0) {
-            CFStringGetCString(appName, buffer, 400, kCFStringEncodingUTF8);
-            e.key = buffer;
-            if (NULL == hsearch(e, FIND)) {
-                continue;
-            }
+            CFStringGetCString(appName, buf, buf_len, kCFStringEncodingUTF8);
             if (layer == 0) {
                 CGRect rect;
                 CFDictionaryRef bounds = (CFDictionaryRef)CFDictionaryGetValue(info,
                                                                                kCGWindowBounds);
                 if(bounds) {
                     CGRectMakeWithDictionaryRepresentation(bounds, &rect);
-                    if (mouse->x >= rect.origin.x && 
+                    if (mouse->x >= rect.origin.x &&
                         mouse->y >= rect.origin.y &&
                         mouse->x < rect.origin.x + rect.size.width &&
                         mouse->y < rect.origin.y + rect.size.height) {
                         CFRelease(windowList);
-                        printf("Skipping '%s'\n", buffer);
                         return true;
                     }
                 }
             }
         }
     }
+    buf[0] = 0;
     CFRelease(windowList);
     return false;
+}
+
+static bool isSkipWindow(CGPoint *mouse) {
+    char buffer[400];
+    if (!getWindowUnderMouse(mouse, buffer, 400)) {
+        printf("no window\n");
+        return false;
+    }
+    ENTRY e;
+    ENTRY *ep;
+    e.key = buffer;
+    ep = hsearch(e, FIND);
+    if (NULL == ep) {
+        return false;
+    }
+    struct lookup *le = ep->data;
+    printf("skip: %s: %d\n", buffer, le->skipWindow);
+    return le->skipWindow;
+}
+
+static bool isNoFocusWindow(CGPoint *mouse) {
+    char buffer[400];
+    if (!getWindowUnderMouse(mouse, buffer, 400)) {
+        printf("no window\n");
+        return false;
+    }
+    ENTRY e;
+    ENTRY *ep;
+    e.key = buffer;
+    ep = hsearch(e, FIND);
+    if (NULL == ep) {
+        return false;
+    }
+    struct lookup *le = ep->data;
+    return le->noFocus;
 }
 
 static void paste(CGEventRef event) {
     // Mouse click to focus and position insertion cursor.
     CGPoint mouseLocation = CGEventGetLocation(event);
-    if (isSkipWindow(&mouseLocation)) {
-        return;
-    }
-    if (gFocusOnMiddleClick) {
+    if (!isNoFocusWindow(&mouseLocation)) {
+        printf("focusing\n");
         CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown,
                                                             mouseLocation,
                                                             kCGMouseButtonLeft);
@@ -100,6 +129,10 @@ static void paste(CGEventRef event) {
         CGEventPost(gTapH, mouseClickUp);
         CFRelease(mouseClickDown);
         CFRelease(mouseClickUp);
+    }
+
+    if (isSkipWindow(&mouseLocation)) {
+        return;
     }
 
     // Allow click events time to position cursor before pasting.
@@ -123,7 +156,6 @@ static void copy(CGEventRef event) {
     if (isSkipWindow(&mouseLocation)) {
         return;
     }
-
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef kbdEventDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 1);
     CGEventRef kbdEventUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_C, 0);
@@ -189,32 +221,73 @@ int main (int argc, char **argv) {
     CFRunLoopSourceRef eventTapRLSrc;
 
     if (argc > 1) {
-        if (0 == hcreate((argc - 1)/2)) {
-            printf("Can't create hash table\n");
+        if (0 == hcreate(argc + 10)) {
+            printf("Couldn't create hash table\n");
             return -1;
         }
         int opt;
         ENTRY e;
-        while ((opt = getopt(argc, argv, "cfs:")) != -1) {
+        ENTRY *ep;
+        while ((opt = getopt(argc, argv, "cn:s:")) != -1) {
             switch (opt) {
             case 'c':
                 gCommandKey = kCGEventFlagMaskControl;
                 printf("Using ctrl instead of cmd\n");
                 break;
 
-            case 'f':
-                gFocusOnMiddleClick = true;
-                printf("Will focus on middle click\n");
+            case 'n':
+                if (gSkipLookups) {
+                    gSkipLookups = false;
+                }
+                printf("Won't focus for '%s'\n", optarg);
+                e.key = strdup(optarg);
+                ep = hsearch(e, FIND);
+                if (NULL == ep) {
+                    struct lookup *le = malloc(sizeof(lookup));
+                    if (NULL == le) {
+                        printf("Couldn't allocate lookup entry\n");
+                        return -1;
+                    }
+                    le->noFocus = true;
+                    le->skipWindow = false;
+                    e.key = strdup(optarg);
+                    e.data = le;
+                    ep = hsearch(e, ENTER);
+                    if (NULL == ep) {
+                        printf("Failed to insert lookup entry for '%s'\n", optarg);
+                        return -1;
+                    }
+                } else {
+                    struct lookup *le = ep->data;
+                    le->noFocus = true;
+                }
                 break;
 
             case 's':
-                gCanSkip = true;
-                printf("Will skip windows named '%s'\n", optarg);
-                e.key = optarg;
-                e.data = optarg;
-                if (NULL == hsearch(e, ENTER)) {
-                    printf("Couldn't add skip '%s'\n", optarg);
-                    return -1;
+                if (gSkipLookups) {
+                    gSkipLookups = false;
+                }
+                printf("Will skip window '%s'\n", optarg);
+                e.key = strdup(optarg);
+                ep = hsearch(e, FIND);
+                if (NULL == ep) {
+                    struct lookup *le = malloc(sizeof(lookup));
+                    if (NULL == le) {
+                        printf("Couldn't allocate lookup entry\n");
+                        return -1;
+                    }
+                    le->noFocus = false;
+                    le->skipWindow = true;
+                    e.key = strdup(optarg);
+                    e.data = le;
+                    ep = hsearch(e, ENTER);
+                    if (NULL == ep) {
+                        printf("Failed to insert lookup entry for '%s'\n", optarg);
+                        return -1;
+                    }
+                } else {
+                    struct lookup *le = ep->data;
+                    le->skipWindow = true;
                 }
                 break;
             }
