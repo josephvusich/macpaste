@@ -28,6 +28,7 @@ long long gCurClickTime = 0;
 CGEventTapLocation gTapA = kCGAnnotatedSessionEventTap;
 CGEventTapLocation gTapH = kCGHIDEventTap;
 int gCommandKey = kCGEventFlagMaskCommand;
+bool gVerbose = false;
 
 bool gSkipLookups = true;
 
@@ -37,6 +38,7 @@ struct lookup {
 } lookup;
 
 #define DOUBLE_CLICK_MILLIS 500
+#define MAX_WINDOW_NAME_SIZE 400
 
 long long now() {
     struct timeval te;
@@ -80,46 +82,38 @@ static bool getWindowUnderMouse(CGPoint *mouse, char *buf, size_t buf_len) {
     return false;
 }
 
+#define GET_WINDOW_BOOL(field) \
+    char buffer[MAX_WINDOW_NAME_SIZE]; \
+    if (!getWindowUnderMouse(mouse, buffer, sizeof(buffer))) { \
+        printf("no window\n"); \
+        return false; \
+    } \
+    ENTRY e; \
+    ENTRY *ep; \
+    e.key = buffer; \
+    ep = hsearch(e, FIND); \
+    if (NULL == ep) { \
+        return false; \
+    } \
+    struct lookup *le = ep->data; \
+    if (gVerbose) { \
+        printf("%s: " #field " %d\n", buffer, le->field); \
+    } \
+    return le->field
+
 static bool isSkipWindow(CGPoint *mouse) {
-    char buffer[400];
-    if (!getWindowUnderMouse(mouse, buffer, 400)) {
-        printf("no window\n");
-        return false;
-    }
-    ENTRY e;
-    ENTRY *ep;
-    e.key = buffer;
-    ep = hsearch(e, FIND);
-    if (NULL == ep) {
-        return false;
-    }
-    struct lookup *le = ep->data;
-    printf("skip: %s: %d\n", buffer, le->skipWindow);
-    return le->skipWindow;
+    GET_WINDOW_BOOL(skipWindow);
 }
 
 static bool isNoFocusWindow(CGPoint *mouse) {
-    char buffer[400];
-    if (!getWindowUnderMouse(mouse, buffer, 400)) {
-        printf("no window\n");
-        return false;
-    }
-    ENTRY e;
-    ENTRY *ep;
-    e.key = buffer;
-    ep = hsearch(e, FIND);
-    if (NULL == ep) {
-        return false;
-    }
-    struct lookup *le = ep->data;
-    return le->noFocus;
+    GET_WINDOW_BOOL(noFocus);
 }
+#undef GET_WINDOW_BOOL
 
 static void paste(CGEventRef event) {
     // Mouse click to focus and position insertion cursor.
     CGPoint mouseLocation = CGEventGetLocation(event);
     if (!isNoFocusWindow(&mouseLocation)) {
-        printf("focusing\n");
         CGEventRef mouseClickDown = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown,
                                                             mouseLocation,
                                                             kCGMouseButtonLeft);
@@ -142,7 +136,7 @@ static void paste(CGEventRef event) {
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef kbdEventPasteDown = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 1);
     CGEventRef kbdEventPasteUp   = CGEventCreateKeyboardEvent(source, kVK_ANSI_V, 0);
-    //CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand );
+    //CGEventSetFlags( kbdEventPasteDown, kCGEventFlagMaskCommand);
     CGEventSetFlags(kbdEventPasteDown, gCommandKey);
     CGEventPost(gTapA, kbdEventPasteDown);
     CGEventPost(gTapA, kbdEventPasteUp);
@@ -228,68 +222,53 @@ int main (int argc, char **argv) {
         int opt;
         ENTRY e;
         ENTRY *ep;
-        while ((opt = getopt(argc, argv, "cn:s:")) != -1) {
+        while ((opt = getopt(argc, argv, "vcn:s:")) != -1) {
             switch (opt) {
+            case 'v':
+                gVerbose = true;
+                break;
             case 'c':
                 gCommandKey = kCGEventFlagMaskControl;
                 printf("Using ctrl instead of cmd\n");
                 break;
 
+
+#define SET_ARG(arg, not_arg) \
+    if (gSkipLookups) { \
+        gSkipLookups = false; \
+    } \
+    e.key = strdup(optarg); \
+    ep = hsearch(e, FIND); \
+    if (NULL == ep) { \
+        struct lookup *le = malloc(sizeof(lookup)); \
+        if (NULL == le) { \
+            printf("Couldn't allocate lookup entry\n"); \
+            return -1; \
+        } \
+        le->arg = true; \
+        le->not_arg = false; \
+        e.key = strdup(optarg); \
+        e.data = le; \
+        ep = hsearch(e, ENTER); \
+        if (NULL == ep) { \
+            printf("Failed to insert lookup entry for '%s'\n", optarg); \
+            return -1; \
+        } \
+    } else { \
+        struct lookup *le = ep->data; \
+        le->arg= true; \
+    }
+
             case 'n':
-                if (gSkipLookups) {
-                    gSkipLookups = false;
-                }
-                printf("Won't focus for '%s'\n", optarg);
-                e.key = strdup(optarg);
-                ep = hsearch(e, FIND);
-                if (NULL == ep) {
-                    struct lookup *le = malloc(sizeof(lookup));
-                    if (NULL == le) {
-                        printf("Couldn't allocate lookup entry\n");
-                        return -1;
-                    }
-                    le->noFocus = true;
-                    le->skipWindow = false;
-                    e.key = strdup(optarg);
-                    e.data = le;
-                    ep = hsearch(e, ENTER);
-                    if (NULL == ep) {
-                        printf("Failed to insert lookup entry for '%s'\n", optarg);
-                        return -1;
-                    }
-                } else {
-                    struct lookup *le = ep->data;
-                    le->noFocus = true;
-                }
+                printf("Won't focus window '%s'\n", optarg);
+                SET_ARG(noFocus, skipWindow);
                 break;
 
             case 's':
-                if (gSkipLookups) {
-                    gSkipLookups = false;
-                }
                 printf("Will skip window '%s'\n", optarg);
-                e.key = strdup(optarg);
-                ep = hsearch(e, FIND);
-                if (NULL == ep) {
-                    struct lookup *le = malloc(sizeof(lookup));
-                    if (NULL == le) {
-                        printf("Couldn't allocate lookup entry\n");
-                        return -1;
-                    }
-                    le->noFocus = false;
-                    le->skipWindow = true;
-                    e.key = strdup(optarg);
-                    e.data = le;
-                    ep = hsearch(e, ENTER);
-                    if (NULL == ep) {
-                        printf("Failed to insert lookup entry for '%s'\n", optarg);
-                        return -1;
-                    }
-                } else {
-                    struct lookup *le = ep->data;
-                    le->skipWindow = true;
-                }
+                SET_ARG(skipWindow, noFocus);
                 break;
+#undef SET_ARG
             }
         }
     }
@@ -297,9 +276,9 @@ int main (int argc, char **argv) {
     printf("Quit from command-line foreground with Ctrl+C\n");
 
     // We want "other" mouse button click-release, such as middle or exotic.
-    emask = CGEventMaskBit(kCGEventOtherMouseDown)  |
+    emask = CGEventMaskBit(kCGEventOtherMouseDown) |
             CGEventMaskBit(kCGEventLeftMouseDown) |
-            CGEventMaskBit(kCGEventLeftMouseUp)   |
+            CGEventMaskBit(kCGEventLeftMouseUp) |
             CGEventMaskBit(kCGEventLeftMouseDragged);
 
     // Create the Tap
