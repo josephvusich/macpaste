@@ -26,6 +26,7 @@ CGEventTapLocation tapA = kCGAnnotatedSessionEventTap;
 CGEventTapLocation tapH = kCGHIDEventTap;
 
 #define DOUBLE_CLICK_MILLIS 500
+#define LONG_CLICK_MILLIS 200
 
 long long now() {
     struct timeval te; 
@@ -87,6 +88,14 @@ static char isDoubleClick() {
 		return isDoubleClickSpeed();
 }
 
+static char isLongClickSpeed() {
+  return ( now() - curClickTime ) > LONG_CLICK_MILLIS;
+}
+
+static char isLongClick() {
+  return isLongClickSpeed();
+}
+
 static CGEventRef mouseCallback (
     CGEventTapProxy proxy,
     CGEventType type,
@@ -104,7 +113,7 @@ static CGEventRef mouseCallback (
 			break;
 
 		case kCGEventLeftMouseUp:
-			if ( isDoubleClick() || isDragging ) {
+			if ( isDoubleClick() || ( isDragging && isLongClick() ) ) {
 				copy();
 			}
 			isDragging = 0;
