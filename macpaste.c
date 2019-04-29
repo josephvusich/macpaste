@@ -105,7 +105,7 @@ static CGEventRef mouseCallback (
 	switch ( type )
 	{
 		case kCGEventOtherMouseDown:
-			paste( event );
+			// paste( event );
 			break;
 
 		case kCGEventLeftMouseDown:
